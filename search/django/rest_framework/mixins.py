@@ -4,7 +4,7 @@ from google.appengine.api import search
 
 from rest_framework import response
 
-from ...utils import clean_value
+from ...indexers import clean_value
 
 from ..adapters import SearchQueryAdapter
 from ..utils import django_qs_to_search_qs
