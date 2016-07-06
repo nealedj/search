@@ -106,6 +106,7 @@ class DynamicDocumentFactory(object):
 
             field.add_to_class(new_cls, field_name)
             self.meta.fields[field_name] = field
+            new_cls._meta.fields[field_name] = field
 
     def get_field(self, field_name):
         try:
