@@ -28,6 +28,8 @@ djangae_testuser:
   username: [iexact, contains, startswith]
 djangae_user:
   username: [iexact]
+django_foo:
+  name: [contains, startswith]
 lookup_alarm:
   time: [hour, minute, second]
 lookup_article:

@@ -29,16 +29,23 @@ class Related(models.Model):
     name = models.CharField(max_length=50)
 
 
-@searchable(FooDocument)
-class Foo(models.Model):
+class FooBase(models.Model):
+    class Meta:
+        abstract = True
+
     name = models.CharField(max_length=50)
     relation = models.ForeignKey(Related, null=True)
     is_good = models.BooleanField(default=False)
     tags = fields.ListField(models.CharField)
 
 
+@searchable(FooDocument)
+class Foo(FooBase):
+    pass
+
+
 @searchable()
-class FooWithMeta(Foo):
+class FooWithMeta(FooBase):
     class SearchMeta:
         fields = ['name', 'name_lower', 'is_good', 'tags', 'relation']
         field_types = {
