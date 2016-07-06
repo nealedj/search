@@ -1,9 +1,7 @@
 import logging
-import operator
 import threading
 
 from django.conf import settings
-from django.db.models.lookups import Lookup
 
 try:
     from text_unidecode import unidecode
@@ -11,8 +9,6 @@ except ImportError:
     HAS_UNIDECODE = False
 else:
     HAS_UNIDECODE = True
-
-from ..ql import Q
 
 from .adapters import SearchQueryAdapter
 
@@ -202,144 +198,7 @@ disable_indexing = DisableIndexing()
 enable_indexing = EnableIndexing()
 
 
-
-def get_filters_from_queryset(queryset, where_node=None):
-    """Translates django queryset filters into a nested dict of tuples
-
-    example:
-    queryset = Profile.objects.filter(given_name='pete').filter(Q(email='1@thing.com') | Q(email='2@thing.com'))
-    get_filters_from_queryset(queryset)
-    returns:
-    {
-        u'children': [
-                (u'given_name', u'exact', 'pete'),
-                {
-                    u'children': [
-                        (u'email', u'exact', '1@thing.com'),
-                        (u'email', u'exact', '2@thing.com')
-                    ],
-                    u'connector': u'OR'
-                }
-            ],
-        u'connector': u'AND'
-    }
-    """
-    where_node = where_node or queryset.query.where
-
-    node_filters = {
-        u'connector': unicode(where_node.connector),
-    }
-
-    children = []
-
-    for node in where_node.children:
-        # Normalize expressions which are an AND with a single child and pull the
-        # use the child node as the expression instead.
-        # This happens if you add querysets together.
-        if getattr(node, 'connector', None) == 'AND' and len(node.children) == 1:
-            node = node.children[0]
-
-        if isinstance(node, Lookup):  # Lookup
-            children.append(build_lookup(node))
-
-        else:  # WhereNode
-            children.append(
-                get_filters_from_queryset(
-                    queryset,
-                    node,
-                )
-            )
-    node_filters[u'children'] = children
-    return node_filters
-
-
-def filters_to_search_query(filters, model, query=None):
-    """Convert a list of nested lookups filters (a result of get_filters_from_queryset)
-    into a SearchQuery objects."""
-    search_query = query or model.search_query()
-    connector = filters['connector']
-    children = filters['children']
-
-    q_objects = None
-
-    for child in children:
-        if isinstance(child, tuple):
-            q = Q(
-                **{
-                    "{}__{}".format(child[0], child[1]): child[2]
-                }
-            )
-            operator_func = getattr(operator, connector.lower() + '_', 'and_')
-            q_objects = operator_func(q_objects, q) if q_objects else q
-
-        else:
-            search_query = filters_to_search_query(child, model, query=search_query)
-
-    if q_objects is not None:
-        # This is essentially a copy of the logic in Query.add_q
-        # The trouble is that add_q always ANDs added Q objects but in this case
-        # we want to specify the connector ourselves
-        if search_query.query._gathered_q is None:
-            search_query.query._gathered_q = q_objects
-        else:
-            search_query.query._gathered_q = getattr(
-                search_query.query._gathered_q,
-                '__{}__'.format(connector.lower())
-            )(q_objects)
-
-    return search_query
-
-
-def build_lookup(node):
-    """Converts Django Lookup into a single tuple
-    or a list of tuples if the lookup_name is IN
-
-    example for lookup_name IN and rhs ['1@thing.com', '2@thing.com']:
-    {
-        u'connector': u'OR',
-        u'children': [
-            (u'email', u'=', u'1@thing.com'),
-            (u'email', u'=', u'2@thing.com')
-        ]
-    }
-
-    example for lookup_name that's not IN (exact in this case) and value '1@thing.com':
-    (u'email', u'=', u'1@thing.com')
-    """
-    target = unicode(node.lhs.target.name)
-    lookup_name = unicode(node.lookup_name)
-
-    # convert "IN" into a list of "="
-    if lookup_name.lower() == u'in':
-        return {
-            u'connector': u'OR',
-            u'children': [
-                (
-                    target,
-                    u'exact',
-                    value,
-                )
-                for value in node.rhs
-            ]
-        }
-
-    return (
-        target,
-        lookup_name,
-        node.rhs,
-    )
-
-
 def django_qs_to_search_qs(queryset):
     """Converts django queryset into search queryset that acts just like the django one,
     unless it already is of SearchQueryAdapter type"""
-
-    # do nothing if already converted
-    if isinstance(queryset, SearchQueryAdapter):
-        return queryset
-
-    filters = get_filters_from_queryset(queryset)
-
-    search_query = filters_to_search_query(filters, queryset.model)
-
-    return SearchQueryAdapter(search_query, queryset=queryset)
+    return SearchQueryAdapter.from_queryset(queryset)

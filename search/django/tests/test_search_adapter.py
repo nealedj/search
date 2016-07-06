@@ -2,13 +2,13 @@ import unittest
 from django.db import models
 from djangae.test import TestCase
 
-from ..utils import django_qs_to_search_qs
+from ..utils import SearchQueryAdapter
 from .models import Foo, FooWithMeta
 
 
 class TestSearchQueryAdapter(TestCase):
     def assertSearchHasSameResult(self, qs, expected_count=None):
-        search_qs = django_qs_to_search_qs(qs)
+        search_qs = SearchQueryAdapter.from_queryset(qs)
 
         self.assertSameList(qs, search_qs)
 
@@ -45,13 +45,13 @@ class TestSearchQueryAdapter(TestCase):
         FooWithMeta.objects.create(name='Donald Duck')
         FooWithMeta.objects.create(name='Duck')
 
-        search_qs = django_qs_to_search_qs(FooWithMeta.objects.all())
+        search_qs = SearchQueryAdapter.from_queryset(FooWithMeta.objects.all())
         search_qs = search_qs.filter(corpus__contains="don")
 
         self.assertEqual(1, search_qs.count())
 
         # exact match
-        search_qs = django_qs_to_search_qs(FooWithMeta.objects.all())
+        search_qs = SearchQueryAdapter.from_queryset(FooWithMeta.objects.all())
         search_qs = search_qs.filter(corpus="donald duck")
 
         self.assertEqual(1, search_qs.count())
@@ -62,7 +62,7 @@ class TestSearchQueryAdapter(TestCase):
         FooWithMeta.objects.create(name='Barbara')
 
         qs = FooWithMeta.objects.all()
-        search_qs = django_qs_to_search_qs(qs)
+        search_qs = SearchQueryAdapter.from_queryset(qs)
 
         qs = qs.order_by('-name')
         search_qs = search_qs.order_by('-name')
@@ -72,10 +72,10 @@ class TestSearchQueryAdapter(TestCase):
     @unittest.skip("TODO")
     def test_ordering_copied(self):
         asc_qs = FooWithMeta.objects.order_by('name')
-        asc_search_qs = django_qs_to_search_qs(asc_qs)
+        asc_search_qs = SearchQueryAdapter.from_queryset(asc_qs)
 
         self.assertSameList(asc_qs, asc_search_qs.as_model_objects(), ordered=True)
 
         desc_qs = FooWithMeta.objects.order_by('-name')
-        desc_search_qs = django_qs_to_search_qs(asc_qs)
+        desc_search_qs = SearchQueryAdapter.from_queryset(asc_qs)
         self.assertSameList(desc_qs, desc_search_qs.as_model_objects(), ordered=True)
