@@ -1,65 +1,20 @@
 # -*- coding: utf-8 -*-
-from django.db import models
 from django.db.models.signals import post_save, pre_delete
 
-from djangae import fields
 from djangae.test import TestCase
 
-from .. import fields as search_fields, indexers as search_indexers
-from ..query import SearchQuery
+from ... import (
+    fields as search_fields,
+    indexers as search_indexers
+)
+from ...query import SearchQuery
 
-from .decorators import searchable
-from .documents import Document
-from .utils import (
+from ..utils import (
     disable_indexing,
-    enable_indexing,
     get_uid,
-    get_ascii_string_rank
 )
 
-
-class TestUtils(TestCase):
-
-    def test_ascii_rank(self):
-        from text_unidecode import unidecode
-
-        strings = [u"a", u"az", u"aaaa", u"azzz", u"zaaa", u"jazz", u"ball", u"a ball", u"łukąźć", u"ołówek", u"♧"]
-
-        ranks = [get_ascii_string_rank(s) for s in strings]
-
-        # Ordering the ranks should result in the same order as the strings.
-        self.assertEqual(
-            [get_ascii_string_rank(s) for s in sorted([unidecode(s) for s in strings])],
-            sorted(ranks)
-        )
-
-
-class Related(models.Model):
-    name = models.CharField(max_length=50)
-
-
-class Foo(models.Model):
-    name = models.CharField(max_length=50)
-    relation = models.ForeignKey(Related, null=True)
-    is_good = models.BooleanField(default=False)
-    tags = fields.ListField(models.CharField)
-
-
-class FooDocument(Document):
-    name = search_fields.TextField()
-    relation = search_fields.TextField()
-    is_good = search_fields.BooleanField()
-    tags = search_fields.TextField()
-
-    def build(self, instance):
-        self.name = instance.name
-        self.relation = str(instance.relation_id)
-        self.is_good = instance.is_good
-        self.tags = "|".join(instance.tags)
-
-
-# Emulate decoration
-Foo = searchable(FooDocument)(Foo)
+from .models import Foo, FooWithMeta, Related, FooDocument
 
 
 class TestSearchable(TestCase):
@@ -164,28 +119,6 @@ class TestSearchable(TestCase):
         self.assertEqual(query.count(), 0)
 
 
-class FooWithMeta(Foo):
-    class SearchMeta:
-        fields = ['name', 'name_lower', 'is_good', 'tags', 'relation']
-        field_types = {
-            'name': search_fields.TextField,
-            'name_lower': search_fields.TextField,
-            'relation': search_fields.TextField
-        }
-        field_mappers = {
-            'name_lower': lambda o: o.name.lower(),
-            'tags': lambda o: u"|".join(o.tags),
-            'relation': lambda o: o.relation.name
-        }
-        corpus = {
-            'name': search_indexers.startswith,
-            'relation': search_indexers.contains
-        }
-
-
-FooWithMeta = searchable()(FooWithMeta)
-
-
 class TestSearchableMeta(TestCase):
     def test_metaclass_side_effects(self):
         index_receivers = [
@@ -242,18 +175,3 @@ class TestSearchableMeta(TestCase):
         self.assertEqual(set(corpus), set(doc.corpus.split(' ')))
         self.assertIn(thing1.name, doc.corpus)
         self.assertIn(related.name, doc.corpus)
-
-
-class TestSearchAdapter(TestCase):
-    def setUp(self):
-        super(TestSearchAdapter, self).setUp()
-
-        self.related = Related.objects.create(name=u"Boôk")
-        self.foo = Foo.objects.create(
-            name="Big Box",
-            is_good=False,
-            tags=["various", "things"],
-            relation=self.related
-        )
-
-
