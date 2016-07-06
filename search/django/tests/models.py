@@ -49,7 +49,7 @@ class FooWithMeta(Foo):
         field_mappers = {
             'name_lower': lambda o: o.name.lower(),
             'tags': lambda o: u"|".join(o.tags),
-            'relation': lambda o: o.relation.name
+            'relation': lambda o: o.relation.name if o.relation else ''
         }
         corpus = {
             'name': search_indexers.startswith,
